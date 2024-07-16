@@ -1,0 +1,112 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract CryptoGovernancePlatform is Ownable {
+    struct Proposal {
+        uint256 id;
+        address proposer;
+        string description;
+        uint256 forVotes;
+        uint256 againstVotes;
+        uint256 startTime;
+        uint256 endTime;
+        bool active;
+        bool executed;
+    }
+
+    struct Voter {
+        bool hasVoted;
+        bool vote; // true = for, false = against
+    }
+
+    uint256 public nextProposalId;
+    mapping(uint256 => Proposal) public proposals;
+    mapping(address => Voter) public voters;
+
+    // Events
+    event ProposalSubmitted(uint256 indexed id, address indexed proposer, string description, uint256 startTime, uint256 endTime);
+    event Voted(uint256 indexed id, address indexed voter, bool vote, uint256 forVotes, uint256 againstVotes);
+    event ProposalExecuted(uint256 indexed id, uint256 forVotes, uint256 againstVotes);
+
+    // Submit a new proposal
+    function submitProposal(string memory description, uint256 durationInDays) external {
+        require(bytes(description).length > 0, "Description cannot be empty");
+        require(durationInDays > 0, "Duration must be greater than zero");
+
+        uint256 startTime = block.timestamp;
+        uint256 endTime = startTime + (durationInDays * 1 days);
+
+        proposals[nextProposalId] = Proposal({
+            id: nextProposalId,
+            proposer: msg.sender,
+            description: description,
+            forVotes: 0,
+            againstVotes: 0,
+            startTime: startTime,
+            endTime: endTime,
+            active: true,
+            executed: false
+        });
+
+        emit ProposalSubmitted(nextProposalId, msg.sender, description, startTime, endTime);
+
+        nextProposalId++;
+    }
+
+    // Vote on a proposal
+    function vote(uint256 id, bool support) external {
+        require(proposals[id].active, "Proposal not active");
+        require(block.timestamp >= proposals[id].startTime && block.timestamp <= proposals[id].endTime, "Voting period has ended");
+        require(!voters[msg.sender].hasVoted, "Already voted");
+
+        voters[msg.sender].hasVoted = true;
+        voters[msg.sender].vote = support;
+
+        if (support) {
+            proposals[id].forVotes++;
+        } else {
+            proposals[id].againstVotes++;
+        }
+
+        emit Voted(id, msg.sender, support, proposals[id].forVotes, proposals[id].againstVotes);
+    }
+
+    // Execute a proposal
+    function executeProposal(uint256 id) external onlyOwner {
+        require(proposals[id].active, "Proposal not active");
+        require(block.timestamp > proposals[id].endTime, "Voting period not ended");
+        require(!proposals[id].executed, "Proposal already executed");
+        
+        proposals[id].executed = true;
+        proposals[id].active = false;
+
+        // Execute action based on voting results
+        if (proposals[id].forVotes > proposals[id].againstVotes) {
+            // Execute proposal action (for example, change contract state)
+            // For demonstration, we emit an event here
+            emit ProposalExecuted(id, proposals[id].forVotes, proposals[id].againstVotes);
+        } else {
+            // Proposal rejected
+            // For demonstration, we do nothing here
+        }
+    }
+
+    // Get proposal details by ID
+    function getProposal(uint256 id) external view returns (
+        address proposer,
+        string memory description,
+        uint256 forVotes,
+        uint256 againstVotes,
+        uint256 startTime,
+        uint256 endTime,
+        bool active,
+        bool executed
+    ) {
+        require(id < nextProposalId, "Proposal does not exist");
+
+        Proposal memory proposal = proposals[id];
+        return (proposal.proposer, proposal.description, proposal.forVotes, proposal.againstVotes, proposal.startTime, proposal.endTime, proposal.active, proposal.executed);
+    }
+}
